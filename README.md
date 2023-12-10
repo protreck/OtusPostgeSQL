@@ -1,1 +1,2 @@
-# OtusPostgeSQL
+# OtusPostgeSQL. Домашние работы.
+
