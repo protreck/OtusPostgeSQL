@@ -1,0 +1,235 @@
+# Домашняя работа.
+
+1. Создал кластер **pgcluster7**:
+```
+kurbatov@otusserver2:~$ sudo pg_createcluster 15 pgcluster7 --start
+[sudo] password for kurbatov:
+Creating new PostgreSQL cluster 15/pgcluster7 ...
+/usr/lib/postgresql/15/bin/initdb -D /var/lib/postgresql/15/pgcluster7 --auth-local peer --auth-host scram-sha-256 --no-instructions
+The files belonging to this database system will be owned by user "postgres".
+This user must also own the server process.
+
+The database cluster will be initialized with locale "en_US.UTF-8".
+The default database encoding has accordingly been set to "UTF8".
+The default text search configuration will be set to "english".
+
+Data page checksums are disabled.
+
+fixing permissions on existing directory /var/lib/postgresql/15/pgcluster7 ... ok
+creating subdirectories ... ok
+selecting dynamic shared memory implementation ... posix
+selecting default max_connections ... 100
+selecting default shared_buffers ... 128MB
+selecting default time zone ... Etc/UTC
+creating configuration files ... ok
+running bootstrap script ... ok
+performing post-bootstrap initialization ... ok
+syncing data to disk ... ok
+Ver Cluster    Port Status Owner    Data directory                    Log file
+15  pgcluster7 5433 online postgres /var/lib/postgresql/15/pgcluster7 /var/log/postgresql/postgresql-15-pgcluster7.log
+kurbatov@otusserver2:~$
+```
+
+2. Подключился к кластеру:
+```
+kurbatov@otusserver2:~$ sudo -u postgres psql -p 5433
+could not change directory to "/home/kurbatov": Permission denied
+psql (15.5 (Ubuntu 15.5-1.pgdg22.04+1))
+Type "help" for help.
+
+postgres=#
+```
+
+3. Создал базу данных:
+```
+postgres=# CREATE DATABASE testdb;
+CREATE DATABASE
+postgres=#
+```
+
+4. Зашел в новую БД:
+```
+postgres=# \c testdb
+You are now connected to database "testdb" as user "postgres".
+testdb=#
+```
+
+5. Создал новую схему:
+```
+testdb=# CREATE SCHEMA testnm;
+CREATE SCHEMA
+testdb=#
+```
+
+6. Создал таблицу:
+```
+testdb=# CREATE TABLE t1(c1 int);
+CREATE TABLE
+testdb=#
+```
+
+7. Добавил запись:
+```
+testdb=# INSERT INTO t1 VALUES (1);
+INSERT 0 1
+testdb=#
+```
+
+8. Создал роль:
+```
+testdb=# CREATE ROLE readonly;
+CREATE ROLE
+testdb=#
+```
+
+9. Дал право на подключение:
+```
+testdb=# GRANT CONNECT ON DATABASE testdb TO readonly;
+GRANT
+testdb=#
+```
+
+10. Дал право на использование схемы:
+```
+testdb=# GRANT USAGE ON SCHEMA testnm TO readonly;
+GRANT
+testdb=#
+```
+
+11. Дал право на SELECT из всех таблиц новой схемы:
+```
+testdb=# GRANT SELECT ON ALL TABLES IN SCHEMA testnm TO readonly;
+GRANT
+testdb=#
+```
+
+12. Создал пользователя:
+```
+testdb=# CREATE USER testread PASSWORD 'test123';
+CREATE ROLE
+testdb=#
+```
+
+13. Дал роль readonly пользователю:
+```
+testdb=# GRANT readonly TO testread;
+GRANT ROLE
+testdb=#
+```
+
+14. Подключился к базе под пользователем testdb:
+```
+kurbatov@otusserver2:~$ sudo psql -U testread -h localhost -p 5433 -d testdb
+[sudo] password for kurbatov:
+Password for user testread:
+psql (15.5 (Ubuntu 15.5-1.pgdg22.04+1))
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, compression: off)
+Type "help" for help.
+
+testdb=>
+```
+
+15. Сделал SELECT:
+```
+testdb=> SELECT * FROM t1;
+ERROR:  permission denied for table t1
+testdb=>
+```
+
+16. Не получилось.
+17. Недостаточно прав для таблицы t1.
+18. Посмотрел \dt, выданных привилегий не увидел:
+```
+testdb=# \dp t1
+                            Access privileges
+ Schema | Name | Type  | Access privileges | Column privileges | Policies
+--------+------+-------+-------------------+-------------------+----------
+ public | t1   | table |                   |                   |
+(1 row)
+```
+Наверное, поэтому и доступ закрыт.
+
+19. Посмотрел на список таблиц:
+```
+testdb=# \dt
+        List of relations
+ Schema | Name | Type  |  Owner
+--------+------+-------+----------
+ public | t1   | table | postgres
+(1 row)
+
+testdb=#
+```
+
+20. Новая таблица и правда в схеме public.
+21. Предполагаю, причина в том, что новая схема не попала в search_path, поэтому новая таблица была создана в схеме public.
+22. Переключился в сессию пользователя postgres.
+23. Удалил таблицу:
+```
+testdb=# DROP TABLE t1;
+DROP TABLE
+testdb=#
+```
+
+24. Создал таблицу в новой схеме:
+```
+testdb=# CREATE TABLE testnm.t1(c1 int);
+CREATE TABLE
+testdb=#
+```
+
+25. Добавил строку в таблицу:
+```
+testdb=# INSERT INTO testnm.t1 VALUES (1);
+INSERT 0 1
+testdb=#
+```
+
+26. Переключился в сеанс пользователя testread.
+27. Выполнил запрос:
+```
+testdb=> SELECT * FROM testnm.t1;
+ERROR:  permission denied for table t1
+testdb=>
+```
+
+28. Не получилось :(
+29. Насколько помню, привилегии выдаются только для существующих таблиц. 
+30. Выдаю привилегии заново:
+```
+testdb=# GRANT SELECT ON ALL TABLES IN SCHEMA testnm TO readonly;
+GRANT
+testdb=#
+```
+31. Сделал запрос от имени testread:
+```
+testdb=> SELECT * FROM testnm.t1;
+ c1
+----
+  1
+(1 row)
+
+testdb=>
+```
+
+32. Получилось.
+
+37. Создаю таблицу t2 со ставкой строки в нее под пользователем testread:
+```
+testdb=> SELECT current_user;
+ current_user
+--------------
+ testread
+(1 row)
+
+testdb=> CREATE TABLE t2(c1 int);
+ERROR:  permission denied for schema public
+LINE 1: CREATE TABLE t2(c1 int);
+                     ^
+testdb=>
+```
+Нет прав на схему public. 
+
+Дальнейшая логика заданий сломалась. 
+
+Что мне переделать?
